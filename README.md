@@ -1,5 +1,5 @@
 # RustOps
-Python discord.py bot to track active players on Rust a given rust server. This will run and be accessible / testable in discord by running from CLI. However, the intended purpose is to run in the cloud. I specifically implemented this bot using Heroku. I plan on making a blog post that creates the installation and setup steps for this.
+Python discord.py bot to track active players on a given Rust server. This will run and be accessible / testable in discord by running from CLI. However, the intended purpose is to run in the cloud. I specifically implemented this bot using Heroku. I plan on making a blog post that creates the installation and setup steps for this.
 
 # Added in Version 2:
 - Registered server command groups (`/server <get/set/clear>` and `/player check <username or steam proifle>`)
