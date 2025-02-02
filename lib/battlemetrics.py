@@ -36,7 +36,7 @@ class ApiClient:
         servers = {} # {"Server Name":"Server ID"} Key/Value pairs
         count = 0 # Server result 
         try: 
-            while count < 20: # Handling Parsing through results
+            while count < 25: # Handling Parsing through results
                 response = requests.get(base_url, headers=self.headers).json()
                 for server in response['data']:
                     servers[server['attributes']['name']] = server['attributes']['id']

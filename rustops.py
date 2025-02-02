@@ -13,17 +13,18 @@ if not discord_token:
 
 # Ensure Discord bot has necessary intents (aka Guild permissions)
 intents = discord.Intents.default()
-intents.message_content = True
+intents.message_content = True # Deprecated only intents.message = True is necessary
 intents.messages = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 
 # Register the commands from lib.bot_commands
-bot.add_command(bot_commands.server_find)
-bot.add_command(bot_commands.player_find)
+bot.tree.add_command(bot_commands.plyrgrp)
+bot.tree.add_command(bot_commands.actsrv)
 
 # Bot ready event
 @bot.event
 async def on_ready():
+    await bot.tree.sync()
     print(f"{bot.user} is ready to query some Rust servers.")
 
 # Run the bot

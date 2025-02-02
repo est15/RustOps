@@ -1,28 +1,94 @@
 import asyncio # Handle retrieving any timeout based errors
-import discord # Handles Discord API Communications with Server (Guild in documentation)
+from discord import app_commands # Handles Discord API Communications with Server (Guild in documentation)
 from discord.ext import commands # Handle Custom Server Commands
+from discord import Interaction
 from lib.battlemetrics import ApiClient # Methods to Query BattleMetrics API
+from lib.steam import steamClient # Methods to Query Steam Web API
+from lib.utils import activeServer # Methods to handle the active server configuration  
 
 # Initialize Battle Metrics API Client (sets BM API Bearer Token)
-api_client = ApiClient()
+battlemettrics = ApiClient()
+steam = steamClient()
+active = activeServer()
 
-# Server find bot command
-@commands.command(
-        name="find",
-        help="/find <server name>\nFind a server's server ID value",
-        usage="/find <server name>"
-            )
-async def server_find(ctx, server_name: str = ""):
+# [!] SERVER COMMAND GROUP 
+class ServerCommandGroup(app_commands.Group):
+    def __init__(self):
+        # Inherit app_commands.Group's method to append our own
+        # /server Commands
+        super().__init__(name="server", description="Rust server configuration commands")
+
+actsrv = ServerCommandGroup()
+
+# [!] /server get
+@actsrv.command(name="get", description="Retrieve currently set active server")
+async def get(interaction: Interaction):
+    server_results = await active.get_server()
+    if server_results:
+        _, server_name = server_results.split(":") # Unused var = server_id
+        await interaction.response.send_message(f"[+] **Active Server**: {server_name}")
+    else:
+        await interaction.response.send_message("[-] **no server set**\nset server: `/server set <Server ID>`")
+
+# /server set <player name or steam url>
+@actsrv.command(name="set", description="Set's active server")
+async def set(interaction: Interaction, server_name: str):
+    # [!] Discord ensures that parameter is set
+    #if not server_id:
+    #    await interaction.response.send_message("[-] You must provide a server ID.")
+    #    return
+    server_results = await _server_find(interaction, server_name)
+    if server_results:
+        server_name, server_id = server_results.split(":")
+        await active.set_server(interaction, server_name, server_id)
+
+# /server clear
+@actsrv.command(name="clear", description="Clear active server")
+async def clear(interaction: Interaction):
+    await interaction.response.send_message(active.clear_server())
+
+# [!] PLAYER COMMAND GROUP 
+class PlayerCommandGroup(app_commands.Group):
+    # Inherit app_commands.Group's method to append our own
+    # /player Commands
+    def __init__(self):
+        super().__init__(name="player", description="Rust player specific commands")
+
+plyrgrp = PlayerCommandGroup()
+# Player find bot command
+@plyrgrp.command(name="check", description="/check <player name or steam profile url>")
+async def player_find(interaction: Interaction, player:str):
+    # Exchange steam profile URL instead display name
+    # Then run the returned display name against BattleMetric's API
+    if 'https' in player or 'http' in player:
+        _, player = steam.get_player_info(player) # Unused Variable == profile_ID (use not currently implemented)
+    
+    # [!] Get Active Server:
+    server_results = await active.get_server()
+    if server_results:
+        server_id, _ = server_results.split(":")  # Unused Variable == server_name
+        
+        # Call the BattleMetric's API to check if player is active
+        result = battlemettrics.send_request(1, server_id.strip(), player.strip())
+        await interaction.response.send_message(result)
+    else:
+        await interaction.response.send_message("[-] **no server set**\nset server: `/server set <Server ID>`")
+
+
+# [!] Internal Function to get target server ID and name 
+async def _server_find(interaction: Interaction, server_name: str):
     if not server_name:
-        await ctx.send_help(ctx.command)
+        await interaction.send_help(interaction.command)
         return
 
     # Calls BM API Method to Return Dictionary with Server Name (key) Server ID (value) pairs
-    server_results = api_client.send_request(0, server_name.strip())
+    server_results = battlemettrics.send_request(0, server_name.strip())
     if not server_results:
-        await ctx.send("[-] No Servers Found")
+        await interaction.response.send_message("[-] No Servers Found")
         return
 
+    # Defer interactiion to prevent timeout errors when getting user choice
+    await interaction.response.defer()
 
     server_names = list(server_results.keys())
     # Get all servers with a # for them to select
@@ -31,40 +97,29 @@ async def server_find(ctx, server_name: str = ""):
     )
 
     # Print the servers
-    srv_listing_msg = await ctx.send(user_server_prompt)
+    srv_listing_msg = await interaction.channel.send(user_server_prompt)
 
     # Ensure Input Meets Critiera (i.e. from command caller)
     def valid_msg(msg):
+        print(f"Received message: {msg.content} from {msg.author}")
         return (
-            msg.author == ctx.author
-            and msg.channel == ctx.channel
+            msg.author == interaction.user
+            and msg.channel == interaction.channel
             and msg.content.isdigit()
             and 1 <= int(msg.content) <= len(server_names)
         )
 
+    user_choice = None
     # Get user's choice to set target server from list
+    # check=valid_msg,
     try:
-        user_choice = await ctx.bot.wait_for("message", check=valid_msg, timeout=30)
+        user_choice = await interaction.client.wait_for("message", check=valid_msg, timeout=30)
         selected_server = server_names[int(user_choice.content) - 1]
-        await ctx.send(f"[+] {selected_server} (Server ID: **{server_results[selected_server]}**)")
+        return f"{selected_server}:{server_results[selected_server]}"
     except asyncio.TimeoutError:
-        await ctx.send("[-] You didn't reply in time. Please try again.")
+        await interaction.response.send_message("[-] You didn't reply in time. Please try again.")
     # Ensure that message printing server details is always deleted
     finally:
         await srv_listing_msg.delete()
         await user_choice.delete()
 
-# Player find bot command
-@commands.command(
-        name="check",
-        help="/check <server ID> <player name>\nCheck if player is active on a given server.\nIf username contains a space wrap the username in quotes.",
-        usage="/check <server ID> <player name>"
-            )
-async def player_find(ctx, server_id:str = "", player:str = ""):
-    if not server_id or not player:
-        await ctx.send_help(ctx.command)
-        return
-
-    # Call the BattleMetric's API to check if player is active
-    result = api_client.send_request(1, server_id.strip(), player.strip())
-    await ctx.send(result)
