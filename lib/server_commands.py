@@ -3,12 +3,10 @@ from discord import app_commands # Handles Discord API Communications with Serve
 from discord.ext import commands # Handle Custom Server Commands
 from discord import Interaction
 from lib.battlemetrics import ApiClient # Methods to Query BattleMetrics API
-from lib.steam import steamClient # Methods to Query Steam Web API
-from lib.utils import activeServer # Methods to handle the active server configuration  
+from lib.utils import activeServer # Methods to handle the active server configuration
 
 # Initialize Battle Metrics API Client (sets BM API Bearer Token)
 battlemettrics = ApiClient()
-steam = steamClient()
 active = activeServer()
 
 # [!] SERVER COMMAND GROUP 
@@ -30,7 +28,7 @@ async def get(interaction: Interaction):
     else:
         await interaction.response.send_message("[-] **no server set**\nset server: `/server set <Server ID>`")
 
-# /server set <player name or steam url>
+# /server set <Server Name>
 @actsrv.command(name="set", description="Set's active server")
 async def set(interaction: Interaction, server_name: str):
     # [!] Discord ensures that parameter is set
@@ -46,34 +44,6 @@ async def set(interaction: Interaction, server_name: str):
 @actsrv.command(name="clear", description="Clear active server")
 async def clear(interaction: Interaction):
     await interaction.response.send_message(active.clear_server())
-
-# [!] PLAYER COMMAND GROUP 
-class PlayerCommandGroup(app_commands.Group):
-    # Inherit app_commands.Group's method to append our own
-    # /player Commands
-    def __init__(self):
-        super().__init__(name="player", description="Rust player specific commands")
-
-plyrgrp = PlayerCommandGroup()
-# Player find bot command
-@plyrgrp.command(name="check", description="/check <player name or steam profile url>")
-async def player_find(interaction: Interaction, player:str):
-    # Exchange steam profile URL instead display name
-    # Then run the returned display name against BattleMetric's API
-    if 'https' in player or 'http' in player:
-        _, player = steam.get_player_info(player) # Unused Variable == profile_ID (use not currently implemented)
-    
-    # [!] Get Active Server:
-    server_results = await active.get_server()
-    if server_results:
-        server_id, _ = server_results.split(":")  # Unused Variable == server_name
-        
-        # Call the BattleMetric's API to check if player is active
-        result = battlemettrics.send_request(1, server_id.strip(), player.strip())
-        await interaction.response.send_message(result)
-    else:
-        await interaction.response.send_message("[-] **no server set**\nset server: `/server set <Server ID>`")
-
 
 # [!] Internal Function to get target server ID and name 
 async def _server_find(interaction: Interaction, server_name: str):
@@ -92,9 +62,7 @@ async def _server_find(interaction: Interaction, server_name: str):
 
     server_names = list(server_results.keys())
     # Get all servers with a # for them to select
-    user_server_prompt = "**[*] SELECT A SERVER**:\n" + "\n".join(
-        [f"[{i+1}]. {name}" for i, name in enumerate(server_names)]
-    )
+    user_server_prompt = "```\n" + "[+] SELECT A SERVER:\n" + "-"*20 + "\n" +  "\n".join([f"[{i+1}]. {name}" for i, name in enumerate(server_names)]) + "```"
 
     # Print the servers
     srv_listing_msg = await interaction.channel.send(user_server_prompt)
@@ -122,4 +90,3 @@ async def _server_find(interaction: Interaction, server_name: str):
     finally:
         await srv_listing_msg.delete()
         await user_choice.delete()
-

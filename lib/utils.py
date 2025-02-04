@@ -17,7 +17,7 @@ class activeServer:
     async def get_server(self):
         server_results = self.fileName.read_text().strip()
         if server_results: # if not empty
-            return server_results
+            return server_results # Let calling function/method handle "<Server ID>:<Server Name>" results
         else:
             return None
     
@@ -42,6 +42,7 @@ class activeServer:
             return f"[+] Active server cleared"
         else:
             return f"[-] no server set:\nSet Server with: `/server set <Server ID>`"
+
         
 
 

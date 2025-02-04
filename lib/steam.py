@@ -14,6 +14,14 @@ class steamClient:
 
         # Content Type Header
         self.headers={"Content-Type":"application/json"}
+    
+    def _valid_steam_id(self, profile_id):
+        """Ensure valid steam id provided"""
+        return bool(re.match(r"^\d{17}$", profile_id))
+    
+    def _valid_steam_url(self, profile_url):
+        """Ensure valid steam profile URL"""
+        return bool(re.match(r"^(?:https?://)?steamcommunity\.com/(?:profiles/|id/)", profile_url))
 
     # [!] Internal Method
     # Resolves Steam vanity URLs into their respective Steam IDs
@@ -45,24 +53,36 @@ class steamClient:
         #       https://steamcommunity.com/(profiles or id)/(either display name set or set of numbers)
         #       [!] REGEX FROM: https://stackoverflow.com/questions/37016532/check-if-valid-steam-profile-url --> Used chatgpt to modify to execute
         try:
-            profile_url_id = re.match(r"^(?:https?://)?steamcommunity\.com/(?:profiles/|id/)([0-9]{17}|[a-zA-Z0-9]+)/*$", profileURL)
-            response = ""
             results = []
+            steam_id = ""
 
-            # Handle Vanity URLs: https://stackoverflow.com/questions/62138380/how-to-resolve-a-steam-custom-vanity-profile-url-to-steamid64
-            # b/c we need the 64-bit steamID to query a user's information
-            if "id" in profile_url_id.group(0):
-                # Get profile's displayname and steamID (used for tracking purposes in the future)
-                profile_url_id = self._resolve_vanity(profile_url_id.group(1))
-                response = self._send_request(profile_url_id['response']['steamid'])
+            # Handle Direct Steam IDs (from database)
+            if self._valid_steam_id(profileURL):
+                steam_id = profileURL
+            # Handle Steam Profile urls (from user input)
+            elif self._valid_steam_url(profileURL):
+                profile_url_id = re.match(r"^(?:https?://)?steamcommunity\.com/(?:profiles/|id/)([0-9]{17}|[a-zA-Z0-9]+)/*$", profileURL)
+
+                # Handle Vanity URLs: https://stackoverflow.com/questions/62138380/how-to-resolve-a-steam-custom-vanity-profile-url-to-steamid64
+                # b/c we need the 64-bit steamID to query a user's information
+                if "id" in profile_url_id.group(0):
+                    # Get profile's displayname and steamID (used for tracking purposes in the future)
+                    vanity_response = self._resolve_vanity(profile_url_id.group(1))
+                    steam_id = vanity_response['response']['steamid']
+                else:
+                    # Get profile's displayname and steamID (used for tracking purposes in the future)
+                    steam_id = profile_url_id.group(1)
             else:
-                # Get profile's displayname and steamID (used for tracking purposes in the future)
-                response = self._send_request(profile_url_id.group(1))
-
-            results.append(response['response']['players'][0]['steamid'])
-            results.append(response['response']['players'][0]['personaname'])
+                raise ValueError("Invalid steam profile URL format.")
             
-            # Return dictionary of {persona:steamID} 
+            # With steam ID gathered, now query Steam Web API
+            response = self._send_request(steam_id)
+            player_data = response['response']['players'][0]
+            # Store the results in a list
+            results.append(player_data['steamid'])
+            results.append(player_data['personaname'])
+            
+            # Return list of (steamID, username) values 
             return results
         except Exception as e:
             print(f"[-] stm_url_extrct ERROR: {e}")
