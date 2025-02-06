@@ -1,6 +1,7 @@
 # RustOps
 Python discord.py bot to track active players on a given Rust server.
-
+### Bot Demo:
+[![Watch the video](https://img.youtube.com/vi/NeKdC2AVGo0/maxresdefault.jpg)](https://www.youtube.com/watch?v=NeKdC2AVGo0)
 ### Requirements:
 1. Discord bot
 2. Steam Web API Token
