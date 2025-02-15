@@ -32,8 +32,6 @@ RustOps is a Discord bot that tracks player activity on Rust servers, organizing
 ### 1.3 - Clear Active Server
 - **`/server clear`** : Clears the currently set active server.
 
----
-
 ## 2. GROUP COMMANDS
 ### 2.1 - Display All Groups
 - **`/group list`** : Lists all groups created, their member count, and last time checked.
@@ -51,42 +49,51 @@ RustOps is a Discord bot that tracks player activity on Rust servers, organizing
 ### 2.7 - Update Group
 - **`/group update <group name>`** : Re-checks & updates each target group member’s username.
 
----
-
 ## 3. PLAYER COMMANDS
 ### 3.1 - Query Single User's Status
 - **`/player check <steam_profile_url, battlemetrics_id, or username>`** : Checks for the player’s last session on the active server.  
-
 ---
+# **Getting Started: A Full Example**
+### 1. Set the Active Server
+Start by setting *Rusty Moose |US Monthly|* as our active server.
+```
+/server set Rusty Moose |US Monthly|
+```
 
-## 4. SESSION TRACKING
-- Utilize BattleMetric's session tracking for players to parse through their `start & end times` to determine:
-  - **Average playtime**
-  - **Most likely start time**
-- Extract player's BattleMetrics ID.
-- Add `last_login_date` and `last_scan_date` to the `groups` table for better tracking.
----
-## **Usage Examples**
-1. **Set the active server:**  
-   ```
-   /server set Rusty Moose
-   ```
-2. **Check if a player is active:**  
-   ```
-   /player check https://steamcommunity.com/profiles/76561198437932502
-   ```
-3. **Add a player to a group:**  
-   ```
-   /group add YuhBoy <battle id>
-   ```
-4. **List all defined groups:**  
-   ```
-   /group list
-   ```
-5. **Check active members in a group:**  
-   ```
-   /group check YuhBoy
-   ```
+### 2. Create a Group and Add Players
+Create a new group called *Purple Base* and add two players, one using a **Steam ID** and another using a **BattleMetrics ID**.
+```
+/group add Purple Base https://steamcommunity.com/profiles/76561198089674904
+/group add Purple Base 962724008
+```
+> NOTE: There will be multiple players matching Vix™, copy the battlemetric's ID for the one that is the desired target. This will allow for precise player matching.
+
+### 3. List All Groups
+We confirm that our *Purple Base* group has been created.
+```
+/group list
+```
+### 4. Check Who's Online in the Group
+Now, we check if any members of *Purple Base* are currently online.
+```
+/group check Purple Base
+```
+### 5. Remove a Player from the Group
+If we want to remove *Vix™* from the group:
+```
+/group remove Purple Base Vix™
+```
+
+### 6. Rename the Group
+If we decide to rename *Purple Base* to *Zerg_A12*:
+```
+/group change Purple Base Zerg_A12
+```
+### 7. Delete the Group
+If we no longer need the group:
+```
+/group del Zerg_A12
+```
 ---
 ## To Do:
 - Session Tracking Enhancements : Improve session analysis using player's session history (i.e. most likely time(s) to be active). 
