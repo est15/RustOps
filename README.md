@@ -1,6 +1,7 @@
 # RustOps
 RustOps is a Discord bot that tracks player activity on Rust servers, organizing them into groups and monitoring who is currently online and when offline members were last active. 
-![RustOps Example](assets/RustOpsv2_Example_Usage.png)
+
+![RustOps Example](https://github.com/est15/RustOps/raw/main/assets/RustOpsv2_Example_Usage.png)
 
 ### Bot Demo:
 > \* *Blog post for installing and setting up necessary infrastructure coming soon.*
