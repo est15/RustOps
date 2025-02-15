@@ -63,10 +63,10 @@ Start by setting *Rusty Moose |US Monthly|* as our active server.
 ### 2. Create a Group and Add Players
 Create a new group called *Purple Base* and add two players, one using a **Steam ID** and another using a **BattleMetrics ID**.
 ```
-/group add Purple Base https://steamcommunity.com/profiles/76561198089674904
-/group add Purple Base 962724008
+/group add Purple Base https://steamcommunity.com/profiles/<steam_id or vanity_url>
+/group add Purple Base <battlemetric_player_id>
 ```
-> NOTE: There will be multiple players matching Vix™, copy the battlemetric's ID for the one that is the desired target. This will allow for precise player matching.
+> NOTE: If there are multiple players returned when using either a username or steam profile: copy the BattleMetric player ID for the player that is the desired target. Then re-enter this into the group add command, whcih will allow for precise player session tracking.
 
 ### 3. List All Groups
 We confirm that our *Purple Base* group has been created.
