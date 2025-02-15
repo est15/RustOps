@@ -37,7 +37,7 @@ RustOps is a Discord bot that tracks player activity on Rust servers, organizing
 - **`/group list`** : Lists all groups created, their member count, and last time checked.
 ### 2.2 - Add Player to Group
 - **`/group add <group name> <steam_profile_url, battlemetrics_id, or username>`** : Adds a player to the specified group (preferably BattleMetrics ID).  
-  *The same player can be in multiple groups.*
+> *The same player can be in multiple groups.*
 ### 2.3 - Remove Player From Group
 - **`/group remove <group name> <player's name>`** : Removes a player from the specified group.  
 ### 2.4 - Query Group Server Status
