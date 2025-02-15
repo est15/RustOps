@@ -12,8 +12,8 @@ RustOps is a Discord bot that tracks player activity on Rust servers, organizing
 3. BattleMetric's API Token
 > (Premium is required for session tracking, $5/month)
 4. Server
->    4a. (paid) Heroku Application & PostgreSQL Addon (Roughly $12/month)
->    4b. (free) Locally running the bot and hosting a local PostgreSQL database. 
+    - 4a. (paid) Heroku Application & PostgreSQL Addon (Roughly $12/month)
+    - 4b. (free) Locally running the bot and hosting a local PostgreSQL database. 
 
 ## **Version 2 Release Features:**
 - Manage active server settings with commands to `set`, `get`, and `clear` the active server.
