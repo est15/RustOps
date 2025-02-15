@@ -51,7 +51,7 @@ class steamClient:
         # [1] Extract the username
         #       Steam profile URLs use the following format(s):
         #       https://steamcommunity.com/(profiles or id)/(either display name set or set of numbers)
-        #       [!] REGEX FROM: https://stackoverflow.com/questions/37016532/check-if-valid-steam-profile-url --> Used chatgpt to modify to execute
+        #       [!] REGEX FROM: https://stackoverflow.com/questions/37016532/check-if-valid-steam-profile-url --> Used chatgpt to modify to execute in python
         try:
             results = []
             steam_id = ""

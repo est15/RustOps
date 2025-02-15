@@ -52,7 +52,7 @@ async def _server_find(interaction: Interaction, server_name: str):
         return
 
     # Calls BM API Method to Return Dictionary with Server Name (key) Server ID (value) pairs
-    server_results = battlemettrics.send_request(0, server_name.strip())
+    server_results = battlemettrics.find_server(server_name.strip())
     if not server_results:
         await interaction.response.send_message("[-] No Servers Found")
         return
@@ -67,7 +67,7 @@ async def _server_find(interaction: Interaction, server_name: str):
     # Print the servers
     srv_listing_msg = await interaction.channel.send(user_server_prompt)
 
-    # Ensure Input Meets Critiera (i.e. from command caller)
+    # Ensure Input Meets Critiera (i.e. from command caller, is a number, and only one parameter is passed (i.e. 2 or 24 and not 2 24))
     def valid_msg(msg):
         print(f"Received message: {msg.content} from {msg.author}")
         return (
@@ -89,4 +89,6 @@ async def _server_find(interaction: Interaction, server_name: str):
     # Ensure that message printing server details is always deleted
     finally:
         await srv_listing_msg.delete()
-        await user_choice.delete()
+        if user_choice:
+            # Deltes message if bot timesout
+            await user_choice.delete()

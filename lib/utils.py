@@ -1,5 +1,5 @@
 # [!] Handle Server File Operations
-import pathlib
+import pathlib # Perform file reading operations for the active server configuration file
 from discord import Interaction # Handles Discord API Communications with Server (Guild in documentation)
 from discord.ext import commands # Handle Custom Server Commands
 import asyncio # Handle retrieving any timeout based errors

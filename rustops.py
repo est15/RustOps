@@ -23,10 +23,15 @@ bot.tree.add_command(player_commands.plyrcmds)
 bot.tree.add_command(server_commands.actsrv)
 bot.tree.add_command(group_commands.grpcmds)
 
-# Bot ready event
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
+    print("Starting command sync...")
+    try:
+        await bot.tree.sync()  # Sync global commands
+        print("Commands synced successfully.")
+    except Exception as e:
+        print(f"Command sync failed: {e}")
+
     print(f"{bot.user} is ready to query some Rust servers.")
 
 # Run the bot
