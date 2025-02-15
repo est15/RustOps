@@ -2,16 +2,18 @@
 RustOps is a Discord bot that tracks player activity on Rust servers, organizing them into groups and monitoring who is currently online and when offline members were last active. 
 
 ### Bot Demo:
+> \* *Blog post for installing and setting up necessary infrastructure coming soon.*
 [![Watch the video](https://img.youtube.com/vi/NeKdC2AVGo0/maxresdefault.jpg)](https://www.youtube.com/watch?v=NeKdC2AVGo0)
 
 ### Requirements:
 1. Discord Bot
-2. Steam Web API Token (Requires a domain, so the price can range)
-3. BattleMetric's API Token (Premium is required for session tracking, $5/month)
+2. Steam Web API Token
+> (Requires a domain, so the price can range)
+3. BattleMetric's API Token
+> (Premium is required for session tracking, $5/month)
 4. Server
-    4a. (paid) Heroku Application & PostgreSQL Addon (Roughly $12/month)
-    4b. (free) Locally running the bot and hosting a local PostgreSQL database. 
-> Blog post for installing and setting up necessary infrastructure coming soon.
+>    4a. (paid) Heroku Application & PostgreSQL Addon (Roughly $12/month)
+>    4b. (free) Locally running the bot and hosting a local PostgreSQL database. 
 
 ## **Version 2 Release Features:**
 - Manage active server settings with commands to `set`, `get`, and `clear` the active server.
