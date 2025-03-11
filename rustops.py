@@ -13,12 +13,11 @@ if not discord_token:
 
 # Ensure Discord bot has necessary intents (aka Guild permissions)
 intents = discord.Intents.default()
-intents.message_content = True # Deprecated only intents.message = True is necessary
+intents.message_content = True
 intents.messages = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 
 # Register the commands from lib.bot_commands
-#bot.add_command(bot_commands.server_find)
 bot.tree.add_command(player_commands.plyrcmds)
 bot.tree.add_command(server_commands.actsrv)
 bot.tree.add_command(group_commands.grpcmds)

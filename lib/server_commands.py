@@ -2,8 +2,8 @@ import asyncio # Handle retrieving any timeout based errors
 from discord import app_commands # Handles Discord API Communications with Server (Guild in documentation)
 from discord.ext import commands # Handle Custom Server Commands
 from discord import Interaction
-from lib.battlemetrics import ApiClient # Methods to Query BattleMetrics API
-from lib.utils import activeServer # Methods to handle the active server configuration
+from lib.battlemetrics import ApiClient # Methods to Query BattleMetrics API 
+from lib.db import activeServer # Methods to handle group database interactions
 
 # Initialize Battle Metrics API Client (sets BM API Bearer Token)
 battlemettrics = ApiClient()
@@ -21,12 +21,12 @@ actsrv = ServerCommandGroup()
 # [!] /server get
 @actsrv.command(name="get", description="Retrieve currently set active server")
 async def get(interaction: Interaction):
-    server_results = await active.get_server()
+    server_results = active.get_server()
     if server_results:
-        _, server_name = server_results.split(":") # Unused var = server_id
-        await interaction.response.send_message(f"[+] **Active Server**: {server_name}")
+        server_id, server_name = server_results # Returns list [server_id,]
+        await interaction.response.send_message(f"```[+] Active Server: {server_name} (server id: {server_id})```")
     else:
-        await interaction.response.send_message("[-] **no server set**\nset server: `/server set <Server ID>`")
+        await interaction.response.send_message("```[-] No Server Set\nSet Server: /server set <Server Name>```")
 
 # /server set <Server Name>
 @actsrv.command(name="set", description="Set's active server")
@@ -35,22 +35,20 @@ async def set(interaction: Interaction, server_name: str):
     #if not server_id:
     #    await interaction.response.send_message("[-] You must provide a server ID.")
     #    return
-    server_results = await _server_find(interaction, server_name)
+    server_results = await _server_find(interaction, server_name) # Returns list [server_id, server_name]
     if server_results:
-        server_name, server_id = server_results.split(":")
-        await active.set_server(interaction, server_name, server_id)
+        server_id, server_name = server_results
+        server_set_notif = active.set_server(server_id, server_name)  # activeServer()'s set_server message returns results of success or failed 
+        await interaction.followup.send(server_set_notif)
 
 # /server clear
-@actsrv.command(name="clear", description="Clear active server")
+@actsrv.command(name="clear", description="Clear active server") 
 async def clear(interaction: Interaction):
-    await interaction.response.send_message(active.clear_server())
+    server_clear_notif = active.clear_server() # activeServer()'s clear_server message returns results of success or failed
+    await interaction.response.send_message(server_clear_notif)
 
 # [!] Internal Function to get target server ID and name 
 async def _server_find(interaction: Interaction, server_name: str):
-    if not server_name:
-        await interaction.send_help(interaction.command)
-        return
-
     # Calls BM API Method to Return Dictionary with Server Name (key) Server ID (value) pairs
     server_results = battlemettrics.find_server(server_name.strip())
     if not server_results:
@@ -67,7 +65,7 @@ async def _server_find(interaction: Interaction, server_name: str):
     # Print the servers
     srv_listing_msg = await interaction.channel.send(user_server_prompt)
 
-    # Ensure Input Meets Critiera (i.e. from command caller, is a number, and only one parameter is passed (i.e. 2 or 24 and not 2 24))
+    # Ensure Input Meets Critiera (i.e. from command caller)
     def valid_msg(msg):
         print(f"Received message: {msg.content} from {msg.author}")
         return (
@@ -83,9 +81,9 @@ async def _server_find(interaction: Interaction, server_name: str):
     try:
         user_choice = await interaction.client.wait_for("message", check=valid_msg, timeout=30)
         selected_server = server_names[int(user_choice.content) - 1]
-        return f"{selected_server}:{server_results[selected_server]}"
+        return [server_results[selected_server], selected_server] # Returns list [server_id, server_name]
     except asyncio.TimeoutError:
-        await interaction.response.send_message("[-] You didn't reply in time. Please try again.")
+        await interaction.response.send_message("```[-] You didn't reply in time. Please try again.```")
     # Ensure that message printing server details is always deleted
     finally:
         await srv_listing_msg.delete()

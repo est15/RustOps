@@ -1,7 +1,7 @@
 # import psycopg2 # Handles Heroku postgres URL (not utilized)
 import os # Handle Environment Variable querying for script secrets
 from dotenv import load_dotenv # Handle Environment Variable querying for script secrets
-from datetime import datetime
+from datetime import datetime, date
 import unicodedata
 
 # Defined Necessary Imports for SQLAlchemy's ORM:
@@ -10,7 +10,7 @@ from sqlalchemy import create_engine # Handles connection to database
 from typing import Optional # Necessary for specifying optional table entries
 from sqlalchemy.orm import sessionmaker # Session # One or the other 
 from sqlalchemy.sql import func # Handles querying encoded member name rows
-from sqlalchemy import String
+from sqlalchemy import String, DateTime
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
@@ -21,12 +21,12 @@ from sqlalchemy import select
 class Base(DeclarativeBase):
     pass
 
-# groups Table's Declarative Mapping (defines the table)
+# Group's Declarative Mapping (defines the table)
 class Group(Base):
     # Table Name
     __tablename__ = 'groups'
 
-    # [!] COLUMNS   
+    # [!] TABLE COLUMNS
     # id --> Unique ID Value
     # name --> Group Name 
     # member --> Player username
@@ -45,11 +45,12 @@ class Group(Base):
     def __repr__(self):
          return f"Group(id={self.id!r}, name={self.name!r}, member={self.member!r}, steam_id={self.steam_id}, battle_id={self.battle_id!r}, date={self.date!r})"
 
-# last_checked Table's Declarative Mapping (defines the table)
+# Group last time checked table
 class LastCheck(Base):
     # Table name
     __tablename__ = 'last_checked'
-    # [!]
+    
+    # [!] TABLE COLUMNS
     # id --> Unique ID Value
     # group --> Group name (unique)
     # active --> Count of active players when last chcked
@@ -59,31 +60,54 @@ class LastCheck(Base):
     group_name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     active_count: Mapped[str] = mapped_column(String(5), nullable=False)
     total_count: Mapped[str] = mapped_column(String(5), nullable=False)
-    date: Mapped[str] = mapped_column(String(255), nullable=True)
+    date: Mapped[str] = mapped_column(String(128), nullable=True)
+
+
+# Stores currently active server (replaces file method)
+class active_server_table(Base):
+    # Table name
+    __tablename__ = "active_server"
+
+    # [!] TABLE COLUMNS
+    # server_id --> Active Server's ID
+    # server_name --> Active Server's Name
+    # date --> Date when active server set
+    server_id: Mapped[str] = mapped_column(String(32), primary_key=True, nullable=False)
+    server_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    date: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=date.today())
+
+# SQLAlchemy Session (utilized by both database() and activeServer() classes)
+# Load environment variables
+try:
+    # Get postgres URL from environment variable
+    load_dotenv()       
+    db_conn = os.getenv('DATABASE_URL')
+
+    if not db_conn:
+        raise EnvironmentError("[-] DATABASE_URL not found")
+
+    if db_conn.startswith("postgres://"):
+        db_conn = db_conn.replace("postgres://", "postgresql://", 1)
+
+    # [!] Heroku Standard connection method (using SQLAlchemy instead):
+    # https://devcenter.heroku.com/articles/connecting-heroku-postgres#connecting-in-python
+    # self.conn = psycopg2.connect(self.db_url, sslmode='require')       
     
+    # Connect to Heroku PostgreSQL Instance
+    # The echo=True parameter indicates that SQL executions will be logged to standard out.
+    engine = create_engine(db_conn, echo=True, 
+                           client_encoding="utf8", 
+                           pool_pre_ping=True) # pool_pre_ping handles postgres sessions becoming stale  (https://stackoverflow.com/questions/66692243/does-the-pre-ping-feature-in-sqlalchemy-db-pools-automatically-reconnect-and-sen)
+    
+    SQLSession = sessionmaker(bind=engine)
+except Exception as e:
+    print("[-] Unable to create SQLAlchemy session to Postgres backend.")
+
 
 class database():
     def __init__(self):
-        # Get secrets from environment  variables
-        load_dotenv()       
-        self.db_conn = os.getenv('DATABASE_URL')
-        if not self.db_conn:
-            raise EnvironmentError("[-] DATABASE_URL not found")
-        
-        if self.db_conn.startswith("postgres://"):
-            self.db_conn = self.db_conn.replace("postgres://", "postgresql://", 1)
-
-        # [!] Heroku Standard connection method (using SQLAlchemy instead):
-        #   Unnecessary since SQLAlchamey handles all of this for us
-        #       https://devcenter.heroku.com/articles/connecting-heroku-postgres#connecting-in-python
-        #       self.conn = psycopg2.connect(self.db_url, sslmode='require')       
-        
-        # Connect to Heroku PostgreSQL Instance
-        # The echo=True parameter indicates that SQL emitted by connections will be logged to standard out.
-        self.engine = create_engine(self.db_conn, echo = True, client_encoding="utf8")
-
-        # Define the session class
-        self.Session = sessionmaker(bind=self.engine)
+        # Define the SQL session
+        self.Session = SQLSession
     
     # [!] GET GROUP NAMES
     def get_all_groups(self):
@@ -116,7 +140,6 @@ class database():
                 return None
     
     # [!] ADD GROUP MEMBER METHOD
-    # *args is handling optional battlemetric's ID && future optional params
     def add_group_member(self, group_name, group_member, member_steam_id, member_battle_id):
         # Extract Additional Optional param(s):
         timestamp = f"{datetime.now().strftime('%Y-%m-%d')}"
@@ -125,7 +148,7 @@ class database():
         with self.Session() as session: 
             # Prepare INSERT statement parameters:
             user = Group(
-                    name=group_name,
+                    name=group_name.lower(), # Ensure case insensitivity
                     member=group_member,
                     steam_id=member_steam_id,
                     battle_id=member_battle_id,
@@ -143,10 +166,10 @@ class database():
         with self.Session() as session:
             try:
                 # Delete all members from the group
-                group_members_deleted = session.query(Group).filter(Group.name == group_name).delete()
+                group_members_deleted = session.query(Group).filter(func.lower(Group.name) == func.lower(group_name)).delete()
 
                 # Delete the entry from group_last_checked
-                last_checked_deleted = session.query(LastCheck).filter(LastCheck.group_name == group_name).delete()
+                last_checked_deleted = session.query(LastCheck).filter(func.lower(LastCheck.group_name) == func.lower(group_name)).delete()
 
                 # Commit the transaction if any rows were deleted
                 if group_members_deleted or last_checked_deleted:
@@ -164,7 +187,7 @@ class database():
     # [!] GET GROUP MEMBERS
     def check_group_members(self, group_name: str):
         with self.Session() as session:
-            return session.query(Group.member, Group.steam_id, Group.battle_id).filter(Group.name == group_name).all()
+            return session.query(Group.member, Group.steam_id, Group.battle_id).filter(func.lower(Group.name) == func.lower(group_name)).all()
 
     # [!] ENSURE USER IS NOT ALREADY IN THE GRUOP ATTEMPTING TO ADD THEM TO
     def check_duplicate_group_member(self, group_name: str, member_name: str = None, steam_id: str = None, battle_id: str = None):
@@ -199,6 +222,9 @@ class database():
                 # Trim whitespace & normalize casing
                 member_name = member_name.strip()
                 member_name = unicodedata.normalize("NFKC", member_name)  # Normalize Unicode
+
+                # Debugging Output (REMOVE AFTER TESTING)
+                print(f"Received input from Discord: '{member_name}'")
                 
                 # GET THE ROW TO DELETE
                 # [!] This does assume that the first occurrence of the first user in the group will be deleted
@@ -217,33 +243,33 @@ class database():
                 print(f"[-] rem_grp_mem Error: {e}")
 
 
-    # [!] Update Group's Last Checked Value
+    # [!] UPDATE GROUP'S LAST CHECKED VALUES
     def update_group_last_checked(self, group_name: str, active_player_count, total_player_count):
         """Takes parameters from /group command(s) to update a groups's variables in the group_last_check table"""
         with self.Session() as session:
             try:
-                # Retreieve the group's current values
+                # Retrieve the group's current values
                 entry = session.query(LastCheck).filter_by(group_name=group_name).first()
-
+                
                 # Get the current time stamp
                 current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-                # Check if the group exists
+                # Check group_name against groups table to see if it actually exists
+                group_exists = session.query(Group).filter(func.lower(Group.name) == func.lower(group_name)).first()
+
+                # Group in last_checked, update rows
                 if entry:
-                    # Update currently set values
                     entry.active_count = str(active_player_count)
                     entry.total_count = str(total_player_count)
                     entry.date = current_time
-                else:
-                    # Add new values
+                # Group not in last_checked, but exists, add to last_checked
+                elif group_exists:
                     new_entry = LastCheck(
                         group_name = group_name,
                         active_count = str(active_player_count),
                         total_count = str(total_player_count),
                         date = current_time
                     )
-
-                    # Add this to the table
                     session.add(new_entry)
                 
                 # Commit the changes
@@ -253,7 +279,7 @@ class database():
                 session.rollback()
 
 
-    # [!] Get Group's Last Checked Value(s)
+    # [!] GET GROUP'S LAST CHECKED VALUE(S)
     def get_group_last_checked(self, group_name: str):
         """Takes parameters from /group command(s) to retrieves a groups's variables in the group_last_check table"""
         with self.Session() as session:
@@ -265,7 +291,7 @@ class database():
                 print(f"[-] grp_lst_chk Error: {e}")
                 return f"[-] grp_lst_chk Error: {e}"
     
-    # [!] Change a group's name 
+    # [!] CHANGE A GROUP'S NAME
     # changed in both groups & last_checked tables
     def change_group_name(self, current_name: str, new_name: str):
         with self.Session() as session:
@@ -273,27 +299,90 @@ class database():
                 # Update group name in the groups table
                 group_update_count = (
                     session.query(Group)
-                    .filter(Group.name == current_name)
-                    .update({Group.name: new_name})
+                    .filter(func.lower(Group.name) == func.lower(current_name))
+                    .update({Group.name: new_name.lower()})
                 )
 
                 # Update group name in the last_checked table
                 last_checked_update_count = (
                     session.query(LastCheck)
-                    .filter(LastCheck.group_name == current_name)
-                    .update({LastCheck.group_name: new_name})
+                    .filter(func.lower(LastCheck.group_name) == func.lower(current_name))
+                    .update({LastCheck.group_name: new_name.lower()})
                 )
 
                 # Commit if any rows were updated
                 if group_update_count > 0 or last_checked_update_count > 0:
                     session.commit()
-                    return f"[+] Group name changed from '{current_name}' to '{new_name}'"
+                    return f"```[+] Group name changed from '{current_name}' to '{new_name}'```"
                 else:
-                    return f"[-] Group '{current_name}' not found"
+                    return f"```[-] Group '{current_name}' not found```"
             except Exception as e:
                 print(f"[-] chng_grp_nme Error: {e}")
                 return
-    
-        
+            
+# Contains guild's active server set, get, and clear methods
+class activeServer:
+    def __init__(self):
+        # Define the SQL session
+        self.Session = SQLSession
+
+    # [!] GET ACTIVE SERVER
+    def get_server(self):
+        with self.Session() as session:
+            try:
+                # Query the currently set 
+                stmt = select(active_server_table.server_id, active_server_table.server_name)
+                server_result = session.execute(stmt).first()
+                
+                if server_result: 
+                    server_id, server_name = server_result
+                    return [server_id, server_name]           
+                else:
+                    return None
+            except Exception as e:
+                print(f"[-] get_actv_srv Error: {e}")
+
+    # [!] SET ACTIVE SERVER
+    def set_server(self, server_id:str,  server_name:str):
+        with self.Session() as session:
+            try:
+                # Get Currently Active Server
+                existing_server = session.query(active_server_table).first()
+
+                # If server set, then update
+                if existing_server: 
+                    existing_server.server_id = server_id
+                    existing_server.server_name = server_name
+                    existing_server.date = date.today()
+                # if no server set, then add 
+                else:
+                    # Populate active server if one does not exists
+                    new_server = active_server_table(server_id=server_id, server_name=server_name, date=date.today())
+                    session.add(new_server)
+
+                session.commit()
+                return f"```[+] Server Set to {server_name} (Server ID: {server_id})```"
+
+            except Exception as e:
+                print(f"[-] set_actv_srv Error: {e}")
+                session.rollback()
+
+    # [!] CLEAR ACTIVE SERVER
+    def clear_server(self):
+        with self.Session() as session:
+            try:
+                # See if a server is set
+                existing_server = session.query(active_server_table).first()
+                if existing_server:
+                    session.delete(existing_server)
+                    session.commit()
+                    return "```[+] Active server cleared```"
+                # Notify server not set yet
+                else:
+                    return f"```[-] no server set:\nSet Server with: /server set <Server ID>```"
+                                    
+            except Exception as e:
+                print(f"[-] clear_actv_srv Error: {e}")
+                session.rollback()
 
 

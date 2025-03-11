@@ -4,6 +4,7 @@ from dotenv import load_dotenv  # Handle loading environment variables
 from datetime import datetime, timezone  # Handle date time formats
 import pytz  # Handles timezone conversions
 import re
+import asyncio # Handle retrieving any timeout based errors
 
 # Class to handle BattleMetrics API Requests & Data Parsing
 class ApiClient:
@@ -13,7 +14,7 @@ class ApiClient:
         self.token = os.getenv('BATTLEMETTRIC_TOKEN')
         self.base_url = "https://api.battlemetrics.com/"
         if not self.token:
-            raise EnvironmentError("[-] BATTLEMETTRIC_TOKEN not found")
+            raise EnvironmentError("[-] BATTLEMETRIC_TOKEN not found")
         # Authorization Header & Content Type
         self.headers = {
             "Authorization": f"Bearer {self.token}",
@@ -76,18 +77,10 @@ class ApiClient:
             return f"```[-] BM_FND_SRV Error: {e}```"
 
 
-    # [!] Handles Identifying players based on usernam (either directly or steam ID)
-    #      if multiple player name matches found then prints them out with their  
-    #      battle IDs and last time seen on the active server.
-    def single_player_check(self, server_id, server_name, trgt_player, trgt_battle_id=None, sort="-lastSeen"):
-        #    If numeric ID => direct get_player_by_id + server session check
-        if trgt_battle_id:
-            player_data = self.get_player_by_id(server_id, trgt_battle_id)
-            if not player_data:
-                return [f"```[-] Player with ID \"{trgt_battle_id}\" not found on server {server_name}```"]
-            return self._get_player_status(server_id, player_data)  # server-specific
-
-        #    Name-based searching if no numeric ID
+    # [!] Handles Identifying players based on username (either directly or steam ID)
+    #      - if multiple found then prints them out with their battle IDs and last 
+    #       time seen on the active server.
+    def single_player_check(self, server_id, server_name, trgt_player, sort="-lastSeen"):
         search_url = self.base_url + "/players"
         search_value = f"\"{trgt_player}\""
         search_params = {
@@ -101,75 +94,140 @@ class ApiClient:
         if not players:
             return [f"```[ ] {trgt_player} : not found on server {server_name}```"]
 
-        # Attempt Ensure accounts with dates greater than a month or year we filter out
         recent_players = [
             p for p in players
             if ("mth" not in self._format_datetime(p['attributes']['updatedAt']))
             and ("yr" not in self._format_datetime(p['attributes']['updatedAt']))
         ]
 
-        #    If we have multiple matches, do a server-specific session check for each
+        # If multiple players found matching name iterate through them, store their battle id and username. 
+        # Additionally gathers the player's session data 
         if len(recent_players) > 1:
-            results_list = []
-            for i, player in enumerate(recent_players[:5], start=1):
-                #   For each matched player, do a separate /sessions call
-                p_id = player['id']
-                p_name = self.sanitize_player_name(player['attributes']['name'])
+            results_dict = {}
+            for i, player in enumerate(recent_players[:10], start=1):
+                # [ADDED] For each matched player, do a separate /sessions call
+                battle_id = player['id']
+                battle_username = self.sanitize_player_name(player['attributes']['name'])
+                last_seen = ""
 
+                # Check if currently active or last time active on server 
                 session_url = f"{self.base_url}/sessions"
                 session_params = {
-                    "filter[players]": p_id,
+                    "filter[players]": battle_id,
                     "filter[servers]": server_id
                 }
                 resp = requests.get(session_url, headers=self.headers, params=session_params)
                 if resp.status_code != 200:
-                    # If request fails, show an error line
-                    results_list.append(
-                        f"{i}. {p_name} (battle id: {p_id}) : ```[-] session query failed ({resp.status_code})```"
-                    )
+                    last_seen = "FAILED TO GET SESSION"
                     continue
 
                 session_data = resp.json().get('data', [])
                 if not session_data:
                     # No session data => never joined or BM doesn't have record
-                    results_list.append(
-                        f"{i}. {p_name} (battle id: {p_id}) : no session data available"
-                    )
+                    last_seen = "no session data available"
                     continue
 
-                #   If we have session data, check the latest session's stop time
                 latest_session = session_data[0]
                 stop_time = latest_session['attributes'].get('stop')
                 if stop_time is None:
                     # Active
-                    results_list.append(
-                        f"{i}. {p_name} (battle id: {p_id}) : ACTIVE"
-                    )
+                    last_seen = "ACTIVE"
                 else:
                     # Last seen => format
-                    formatted = self._format_datetime(stop_time)
-                    results_list.append(
-                        f"{i}. {p_name} (battle id: {p_id}) : last seen {formatted}"
-                    )
+                    last_seen_time_formatted = self._format_datetime(stop_time)
+                    last_seen = last_seen_time_formatted
 
+                # Add Player's battle_id, battle_username, and last_seen values to dictionary
+                results_dict[battle_id] = [battle_username, last_seen]
+            
+            # Return list [None, None, dictionary_of_player_data]
             return [
                 None, 
                 None, 
-                "```[+] Multiple players found:\n" 
-                + "-" * 27 + "\n" 
-                + "\n".join(results_list) 
-                + "```***\*** Use the battlemettric id for the correct player.*"
+                results_dict
             ]
         
         # If only one "recent" match, return the final active/last-seen message
         return self._get_player_status(server_id, recent_players[0])
     
+     # [!] Internal Method to Handle Selecting Correct Player if Multiple Players Found Matching username
+    async def handle_multi_players_found(self, interaction, recent_players):
+        if not recent_players:
+            await interaction.followup.send("```[-] Multiple playes check ran but was passed empty list.```")
+            return None
+
+        # 1) Build the listing of players
+        listing_lines = []
+        for i, (battle_id, [battle_username, last_seen]) in enumerate(recent_players.items(), start=1):
+            listing_lines.append(f"[{i}]. {battle_username} (battle id: {battle_id}) : {last_seen}")
+
+        user_player_prompt = (
+            "```[+] SELECT A PLAYER:\n"
+            + "-"*20
+            + "\n"
+            + "\n".join(listing_lines)
+            + "\n[0]. None of Them"
+            + "```"
+        )
+
+        # 2) Send the listing message
+        prompt_message = await interaction.followup.send(user_player_prompt)
+
+        # 3) Define a check function that ensures correct user input
+        def valid_msg(msg):
+            return (
+                msg.author == interaction.user
+                and msg.channel == interaction.channel
+                and msg.content.isdigit()
+                and 1 <= int(msg.content) <= len(recent_players) or int(msg.content) == 0
+            )
+
+        user_choice_msg = None
+        chosen_player = None
+
+        try:
+            # 4) Wait 30s for a valid digit
+            user_choice_msg = await interaction.client.wait_for(
+                "message",
+                check=valid_msg,
+                timeout=30
+            )
+            # If valid, pick the correct player
+            choice_index = int(user_choice_msg.content)
+
+            # Store all battle_ids in a list
+            dict_keys = list(recent_players.keys())
+            
+            # If user selected 0 then delete the messages & dont perform anything
+            if choice_index == 0:
+                await interaction.followup.send("```[-] Target player not in list.```")
+                chosen_player = None
+            else:
+                # otherwise pick the correct player from the list (1..N)
+                chosen_player = dict_keys[choice_index - 1]
+        except asyncio.TimeoutError:
+            await interaction.followup.send("```[-] You didn't reply in time. Please try again.```")
+        finally:
+            # Cleanup: attempt to delete both the listing & the user’s choice
+            try:
+                await prompt_message.delete()
+            except:
+                pass
+            if user_choice_msg:
+                try:
+                    await user_choice_msg.delete()
+                except:
+                    pass
+
+        # Returns battle_id for target player; treated as unique identifier for calling method
+        return chosen_player
+    
     # [!] Handles identifying activity status for a player when a battlemetrics ID is passeed as input
-    def server_player_check_single(self, server_id: str, bm_player_id: str, fallback_name: str) -> str:
+    def check_player_using_battle_id(self, server_id: str, bm_player_id: str, fallback_name: str) -> str:
         try:
             if not bm_player_id:
-                return f"[ ] {fallback_name} : BattleMetrics ID not found"
-
+                return f"[ ] {fallback_name} : BattleMetrics ID for user not found but executed check_player_using_battle_id." # This should not execute, fallback error
+ 
             session_url = f"{self.base_url}/sessions"
             session_params = {
                 "filter[players]": bm_player_id,
@@ -192,45 +250,12 @@ class ApiClient:
                 return f"[ ] {fallback_name} : last seen {last_seen_str}"
 
         except Exception as e:
-            return f"[-] server_player_check_single Error: {e}"
+            return f"[-] check_player_using_battle_id Error: {e}"
 
 
-    # [!] Executed when checking player status
-    def _get_player_status(self, server_id, player_data):
-        """
-        Server-specific status check for one user (called by single_player_check if exactly one match).
-        Replaces usage of 'updatedAt' with sessions for accurate 'ACTIVE' or 'last seen X'.
-        """
-        player_id = player_data['id']
-        player_name = self.sanitize_player_name(player_data['attributes']['name'])
-
-        sessions_url = f"{self.base_url}/sessions"
-        sessions_params = {
-            "filter[players]": player_id,
-            "filter[servers]": server_id,
-            #   Optionally sort by latest sessions first if it's a valid field:
-            # "sort": "-start"
-        }
-
-        sessions_response = requests.get(sessions_url, headers=self.headers, params=sessions_params)
-        if sessions_response.status_code != 200:
-            return [player_id, player_name, f"```[-] Unable to get session data (HTTP {sessions_response.status_code}).```"]
-
-        session_data = sessions_response.json().get('data', [])
-        if not session_data:
-            return [player_id, player_name, f"```[ ] {player_name} : no session data available```"]
-
-        latest_session = session_data[0]
-        stop_time = latest_session['attributes'].get('stop')
-
-        if stop_time is None:
-            return [player_id, player_name, f"```[X] {player_name} : ACTIVE```"]
-        else:
-            formatted_last_seen = self._format_datetime(stop_time)
-            return [player_id, player_name, f"```[ ] {player_name} : last seen {formatted_last_seen}```"]
-
-    # Handle names that contain unprintable characters
-    # BattleeMetrics the bytes that make up the encoded string (Ex: '\u1cbc')
+    # Handle names that contain unprintable characters in the bytes
+    # that make up the encoded string (Ex: '\u1cbc')
+    #
     # This will make the character unprintable, and we'll use an alais 
     # for the user in the format: "\u1cbc"	would become "Player_1cbc"
     def sanitize_player_name(self, username):
@@ -250,7 +275,7 @@ class ApiClient:
         return f"Player_{user_bytes}"
     
     # [!] Queries Sessions based on BattleMetrics Player ID
-    def get_player_by_id(self, server_id, battle_id):
+    def get_player_by_id(self, battle_id):
         """Query the BattleMetrics API to get player details by ID."""
         player_url = f"{self.base_url}/players/{battle_id}"
         response = requests.get(player_url, headers=self.headers)
@@ -262,47 +287,37 @@ class ApiClient:
             return player_data
         else:
             return None
+    
 
-    def group_player_check(self, server_id: str, player_name: str, player_battle_id: str):
-        """Check if a player is active or when they were last seen using their session data."""
-        try:
-            if not player_battle_id:
-                # Return message when BattleMetrics ID is not found
-                return [0, f"[ ] {player_name} : BattleMetrics ID not found"]
+# [!] Executed when checking player status
+    def _get_player_status(self, server_id, player_data):
+        """
+        Server-specific status check for one user (called by single_player_check if exactly one match).
+        Replaces usage of 'updatedAt' with sessions for accurate 'ACTIVE' or 'last seen X'.
+        """
+        player_id = player_data['id']
+        player_name = self.sanitize_player_name(player_data['attributes']['name'])
 
-            session_url = f"{self.base_url}/sessions"
-            session_params = {
-                "filter[players]": player_battle_id,
-                "filter[servers]": server_id
-            }
+        sessions_url = f"{self.base_url}/sessions"
+        sessions_params = {
+            "filter[players]": player_id,
+            "filter[servers]": server_id,
+            # "sort": "-start"
+        }
 
-            # Perform the API request to get session data
-            response = requests.get(session_url, headers=self.headers, params=session_params)
-            if response.status_code != 200:
-                # Handle error if API request fails
-                return [0, f"[-] BM_CHK_GRP Error: Failed to retrieve sessions ({response.status_code})"]
+        sessions_response = requests.get(sessions_url, headers=self.headers, params=sessions_params)
+        if sessions_response.status_code != 200:
+            return [player_id, player_name, f"```[-] Unable to get session data (HTTP {sessions_response.status_code}).```"]
 
-            # Extract session data from response
-            session_data = response.json().get('data', [])
-            if not session_data:
-                # No session data available for the player
-                return [0, f"[ ] {player_name} : no session data available"]
+        session_data = sessions_response.json().get('data', [])
+        if not session_data:
+            return [player_id, player_name, f"```[ ] {player_name} : no session data available```"]
 
-            # Extract the most recent session from the data
-            latest_session = session_data[0]
-            stop_time = latest_session['attributes'].get('stop')
+        latest_session = session_data[0]
+        stop_time = latest_session['attributes'].get('stop')
 
-            # Check if the player's latest session is active
-            if stop_time is None:
-                # Return active player status
-                return [1, f"[X] {player_name} : ACTIVE"]
-            else:
-                # Format the last seen time
-                formatted_duration = self._format_datetime(stop_time)
-                
-                # Added newline in the formatted string to ensure proper spacing and readability
-                return [2, f"[ ] {player_name} : last seen {formatted_duration}"]
-
-        except Exception as e:
-            # Handle any exceptions during the process
-            return [0, f"[-] BM_CHK_GRP Error: {e}"]
+        if stop_time is None:
+            return [player_id, player_name, f"```[X] {player_name} : ACTIVE```"]
+        else:
+            formatted_last_seen = self._format_datetime(stop_time)
+            return [player_id, player_name, f"```[ ] {player_name} : last seen {formatted_last_seen}```"]
